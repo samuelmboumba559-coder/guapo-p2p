@@ -1,0 +1,123 @@
+from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.lang import Builder
+from kivy.clock import Clock
+import urllib.request, json
+from datetime import datetime
+
+KV = """
+<GuapoLayout>:
+    orientation: 'vertical'
+    padding: 15
+    spacing: 10
+    canvas.before:
+        Color:
+            rgba: 0.05, 0.05, 0.05, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+            
+    Label:
+        text: 'GUAPO P2P GABON'
+        font_size: '26sp'
+        bold: True
+        color: 0, 1, 0.5, 1
+        size_hint_y: 0.15
+
+    BoxLayout:
+        orientation: 'vertical'
+        spacing: 12
+        size_hint_y: 0.6
+        Label:
+            id: heure
+            text: 'Heure: --:--:--'
+            font_size: '16sp'
+        Label:
+            id: vendeur
+            text: 'Vendeur: --- XAF'
+            font_size: '20sp'
+            bold: True
+        Label:
+            id: acheteur
+            text: 'Acheteur: --- XAF'
+            font_size: '20sp'
+            bold: True
+        Label:
+            id: profit
+            text: 'Profit 50k: 0 XAF'
+            font_size: '18sp'
+            color: 0, 1, 0, 1
+        Label:
+            id: alerte
+            text: 'Seuils: Achat < 598 | Vente > 615'
+            font_size: '14sp'
+            color: 1, 1, 0, 1
+
+    Button:
+        id: btn
+        text: 'DEMARRER LE BOT'
+        font_size: '20sp'
+        bold: True
+        background_color: 0, 0.8, 0, 1
+        size_hint_y: 0.25
+        on_press: root.toggle()
+"""
+
+def get_prix(trade_type):
+    url = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
+    data = json.dumps({
+        "asset": "USDT",
+        "fiat": "XAF",
+        "page": 1,
+        "rows": 1,
+        "tradeType": trade_type,
+        "payTypes": []
+    }).encode()
+    try:
+        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            j = json.loads(r.read().decode())
+            return float(j['data'][0]['adv']['price'])
+    except:
+        return 0
+
+class GuapoLayout(BoxLayout):
+    running = False
+    def toggle(self):
+        if not self.running:
+            self.running = True
+            self.ids.btn.text = "ARRETER"
+            self.ids.btn.background_color = (0.8, 0, 0, 1)
+            Clock.schedule_interval(self.update, 30)
+            self.update(0)
+        else:
+            self.running = False
+            self.ids.btn.text = "DEMARRER LE BOT"
+            self.ids.btn.background_color = (0, 0.8, 0, 1)
+            Clock.unschedule(self.update)
+
+    def update(self, dt):
+        v = get_prix("BUY")
+        a = get_prix("SELL")
+        self.ids.heure.text = f"Heure: {datetime.now().strftime('%H:%M:%S')}"
+        if v == 0:
+            self.ids.vendeur.text = "Pas de connexion..."
+            return
+        marge = a - v
+        profit = (50000 / v) * marge if v > 0 else 0
+        self.ids.vendeur.text = f"Vendeur: {v:.1f} XAF"
+        self.ids.acheteur.text = f"Acheteur: {a:.1f} XAF"
+        self.ids.profit.text = f"Profit 50k: {profit:.0f} XAF | Marge: {marge:.1f}"
+        if v <= 598:
+            self.ids.alerte.text = f"🔥 ACHETE MAINTENANT A {v} !"
+        elif a >= 615:
+            self.ids.alerte.text = f"💰 VENDS MAINTENANT A {a} !"
+        else:
+            self.ids.alerte.text = "En surveillance..."
+
+class GuapoApp(App):
+    def build(self):
+        Builder.load_string(KV)
+        return GuapoLayout()
+
+GuapoApp().run()
